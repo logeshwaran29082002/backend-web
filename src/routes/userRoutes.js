@@ -1,46 +1,41 @@
 const express = require("express");
 const router = express.Router();
 
-// signup
-const { signup, verifyOTP, resendOTP, googleLogin,  } = require("../controllers/userController");
+// SIGNUP CONTROLLERS
+const { signup, verifyOTP, resendOTP, googleLogin } = require("../controllers/userController");
 
-//Login
+// LOGIN + RESET CONTROLLERS
 const { Login, resetPassword, resetpasswordToken, verifyOtp } = require("../controllers/loginController");
 
-
-// middleware
+// MIDDLEWARE
 const { verifyToken } = require("../middleware/auth");
 
-
-// signup
-router.post("/signup", signup);  // api  http://localhost:5000/api/signup
-router.post("/verify-otp", verifyOTP);  // api  http://localhost:5000/api/verify-otp
+// ---------------- SIGNUP ----------------
+router.post("/signup", signup);
+router.post("/signup-verify-otp", verifyOTP);   // ✅ renamed (was /verify-otp)
 router.post("/resend-otp", resendOTP);
 
+// ---------------- LOGIN ----------------
+router.post("/login", Login);
 
-//login
-router.post("/login",Login);
-
-
-// google login
+// ---------------- GOOGLE LOGIN ----------------
 router.post("/google-login", googleLogin);
 
-
-// token verify
+// ---------------- TOKEN VERIFY ----------------
 router.get("/profile", verifyToken, (req, res) => {
   res.json({
     message: "Protected route",
-    user: req.user
+    user: req.user,
   });
 });
 
-// reset password 
-router.post("/reset-password",resetPassword)
+// ---------------- RESET PASSWORD ----------------
+router.post("/reset-password", resetPassword);
 
-// rest password verify
-router.post("/verify-otp", verifyOtp);
+// ✅ RESET PASSWORD OTP VERIFY (separate route)
+router.post("/reset-verify-otp", verifyOtp);
 
-// reset password
+// ✅ RESET PASSWORD USING TOKEN
+router.post("/reset-password/:token", resetpasswordToken);
 
-router.post('/reset-password/:token',resetpasswordToken)
 module.exports = router;

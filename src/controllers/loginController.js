@@ -1,11 +1,12 @@
 const User = require("../models/userSchema");
 const bcrypt = require("bcrypt");
 const generateToken = require("../utils/generateToken");
-const hashed = require('../utils/hashPassword')
 const nodemailer = require("nodemailer");
+
+// ---------------- LOGIN ----------------
 const Login = async (req, res) => {
   try {
-    const { email,password } = req.body;
+    const { email, password } = req.body;
 
     // Check if user exists
     const user = await User.findOne({ email: email.toLowerCase() });
@@ -23,88 +24,123 @@ const Login = async (req, res) => {
     const token = generateToken(user._id);
 
     return res.status(200).json({ token });
+
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ message: "Login error" });
   }
 };
 
-// reset password
-
+// ---------------- RESET PASSWORD (SEND TOKEN) ----------------
 const resetPassword = async (req, res) => {
-  const { email } = req.body;
-  const user = await User.findOne({ email });
-  if (!user) {
-    res.status(404).json({ message: "user not found" });
-  }
-  const token = Math.random().toString(36).slice(-6);
-  user.resetpasswordToken = token;
-  user.resetpasswordExpires = Date.now() + 3600000; // 1hour
+  try {
+    const { email } = req.body;
 
-  await user.save();
-
-  const transporater = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: "logeshwaran2982@gmail.com",
-      pass: "cxwm exok ptdf alcj",
-    },
-  });
-
-  const message = {
-    from: "logeshwaran2982@gmail.com",
-    to: user.email,
-    subject: "password reset request",
-    text: `you are receving this email  because you (or someone else ) has requested a password  reset  for your account. \n\n please use the token  to reset you password: ${token} \n\n If you did the password reset , please ignore this email.`,
-  };
-  transporater.sendMail(message,(err,info)=>{
-    if(err){
-      res.status(404).json({message:"something went wrong . Try again later!"})
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
-   res.status(200).json({
-    message: "Password reset email sent successfully",
-    token
-});
 
-  });
+    const token = Math.random().toString(36).slice(-6);
+
+    user.resetpasswordToken = token;
+    user.resetpasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const message = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: "Password reset request",
+      text: `You requested a password reset.\n\nYour reset token is: ${token}\n\nIf you did not request this, ignore this email.`,
+    };
+
+    transporter.sendMail(message, (err, info) => {
+      if (err) {
+        console.error("Reset mail error:", err);
+        return res.status(500).json({
+          message: "Something went wrong. Try again later!",
+        });
+      }
+
+      return res.status(200).json({
+        message: "Password reset email sent successfully",
+        token,
+      });
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
 };
-// verify otp 
+
+// ---------------- VERIFY RESET OTP ----------------
 const verifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  try {
+    const { email, otp } = req.body;
 
-  const user = await User.findOne({
-    email,
-    resetpasswordToken: otp,
-    resetpasswordExpires: { $gt: Date.now() },
-  });
+    const user = await User.findOne({
+      email,
+      resetpasswordToken: otp,
+      resetpasswordExpires: { $gt: Date.now() },
+    });
 
-  if (!user) {
-    return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    return res.status(200).json({ message: "OTP Verified" });
+
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
-
-  return res.status(200).json({ message: "OTP Verified" });
 };
 
+// ---------------- RESET PASSWORD USING TOKEN ----------------
+const resetpasswordToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
 
-// reset password verify 
- 
-const resetpasswordToken = async (req,res)=>{
-  const {token} = req.params;
-  const {password} = req.body;
-  const user = await User.findOne({
-    resetpasswordToken :token,
-    resetpasswordExpires :{$gt :Date.now()},
-  });
-  if(!user){
-    res.status(404).json({message:"Invalied token"})
+    const user = await User.findOne({
+      resetpasswordToken: token,
+      resetpasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Invalid token" });
+    }
+
+    const hashedpassword = await bcrypt.hash(password, 10);
+
+    user.password = hashedpassword;
+    user.resetpasswordToken = null;
+    user.resetpasswordExpires = null;
+
+    await user.save();
+
+    return res.status(201).json({
+      message: "Password reset successfully",
+    });
+
+  } catch (error) {
+    console.error("Reset token error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
-  const hashedpassword = await bcrypt.hash(password,10);
-  user.password = hashedpassword;
-  user.resetpasswordToken=null;
-  user.resetpasswordExpires=null;
+};
 
-  await user.save();
-
-  res.status(201).json({message:"Password reset sucessfully"})
-}
-module.exports = { Login, resetPassword , resetpasswordToken , verifyOtp};
+module.exports = {
+  Login,
+  resetPassword,
+  resetpasswordToken,
+  verifyOtp,
+};

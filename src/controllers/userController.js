@@ -3,7 +3,6 @@ const hashpassword = require("../utils/hashPassword");
 const sentOtp = require("../utils/sendOtp");
 const generateToken = require("../utils/generateToken");
 
-
 // ---------------- SIGNUP -----------------
 const signup = async (req, res) => {
   try {
@@ -29,64 +28,62 @@ const signup = async (req, res) => {
       password: hashed,
       otp,
       otpExpireTime: otpExpire,
-      isVerified: false
+      isVerified: false,
     });
 
-    await newUser.save();   // ✅ USER STORED SUCCESSFULLY
+    await newUser.save(); // ✅ DB STORE
 
-    // ✅ OTP SEND — BUT WILL NOT BREAK SIGNUP IF FAILS
-    try {
-      await sentOtp(newUser.email, otp);
-    } catch (err) {
-      console.error("OTP sending failed:", err.message);
-    }
+    // ✅ FRONTEND RESPONSE FIRST
+    res.status(201).json({
+      message: "Signup successful",
+      userId: newUser._id,
+    });
 
-    // ✅ ALWAYS SEND SUCCESS RESPONSE TO FRONTEND
-  await newUser.save();   // ✅ user DB-ல store ஆகுது
-
-  
-return res.status(201).json({
-  message: "Signup successful",
-  userId: newUser._id
-});
-
+    // ✅ OTP SEND IN BACKGROUND (DEPLOY SAFE)
+    sentOtp(newUser.email, otp)
+      .then(() => console.log("✅ OTP sent to:", newUser.email))
+      .catch((err) => {
+        console.error("❌ OTP send failed:", err.message);
+      });
 
   } catch (err) {
     console.error("Signup error:", err);
     return res.status(500).json({
       message: "Signup failed",
-      error: err.message
+      error: err.message,
     });
   }
 };
-
-
 
 // ---------------- VERIFY OTP -----------------
 const verifyOTP = async (req, res) => {
   try {
     const { userId, otp } = req.body;
 
-    if (!userId || !otp)
+    if (!userId || !otp) {
       return res.status(400).json({ message: "userId and OTP required" });
+    }
 
     const user = await User.findById(userId);
-    if (!user)
+    if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
 
-    // 👉 Restrict only Gmail users
     if (!user.email.endsWith("@gmail.com")) {
       return res.status(400).json({ message: "Only Gmail email IDs are allowed" });
     }
 
-    if (user.isVerified)
+    if (user.isVerified) {
       return res.status(400).json({ message: "User already verified" });
+    }
 
-    if (Date.now() > user.otpExpireTime)
+    if (Date.now() > user.otpExpireTime) {
       return res.status(400).json({ message: "OTP expired" });
+    }
 
-    if (user.otp !== otp)
+    if (user.otp !== otp) {
       return res.status(400).json({ message: "Invalid OTP" });
+    }
 
     user.isVerified = true;
     user.otp = undefined;
@@ -98,33 +95,36 @@ const verifyOTP = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
+
   } catch (err) {
     console.error("verifyOTP error:", err);
     return res.status(500).json({
       message: "Server error",
-      error: err.message
+      error: err.message,
     });
   }
 };
-
 
 // ---------------- RESEND OTP -----------------
 const resendOTP = async (req, res) => {
   try {
     const { userId } = req.body;
 
-    if (!userId)
+    if (!userId) {
       return res.status(400).json({ message: "userId is required" });
+    }
 
     const user = await User.findById(userId);
-    if (!user)
+    if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
 
-    if (user.isVerified)
+    if (user.isVerified) {
       return res.status(400).json({ message: "User already verified" });
+    }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const otpExpire = Date.now() + 5 * 60 * 1000;
@@ -133,11 +133,9 @@ const resendOTP = async (req, res) => {
     user.otpExpireTime = otpExpire;
     await user.save();
 
-    try {
-      await sentOtp(user.email, otp);
-    } catch (mailErr) {
-      console.error("Resend OTP mail failed:", mailErr);
-    }
+    sentOtp(user.email, otp)
+      .then(() => console.log("✅ Resent OTP to:", user.email))
+      .catch((err) => console.error("❌ Resend OTP failed:", err.message));
 
     return res.status(200).json({ message: "OTP resent successfully" });
 
@@ -145,12 +143,12 @@ const resendOTP = async (req, res) => {
     console.error("resendOTP error:", err);
     return res.status(500).json({
       message: "Server error",
-      error: err.message
+      error: err.message,
     });
   }
 };
 
-
+// ---------------- GOOGLE LOGIN -----------------
 const googleLogin = async (req, res) => {
   try {
     const { name, email, picture } = req.body;
@@ -168,28 +166,26 @@ const googleLogin = async (req, res) => {
         avatar: picture,
         password: null,
         googleAccount: true,
-        isVerified: true
+        isVerified: true,
       });
     }
 
-    // ⭐ generate JWT token properly
     const token = generateToken(user._id);
 
     return res.status(200).json({
       message: "Google login success",
       token,
-      user
+      user,
     });
 
   } catch (err) {
     console.error("Google Login Error:", err);
     return res.status(500).json({
       message: "Server error",
-      error: err.message
+      error: err.message,
     });
   }
 };
-
 
 // EXPORT ALL
 module.exports = {
