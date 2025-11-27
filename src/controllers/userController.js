@@ -1,0 +1,178 @@
+  const User = require("../models/userSchema");
+  const hashpassword = require("../utils/hashPassword");
+  const sentOtp = require("../utils/sendOtp");
+  const generateToken = require("../utils/generateToken");
+
+
+
+
+  // ---------------- SIGNUP -----------------
+  const signup = async (req, res) => {
+    try {
+      const { name, email, password } = req.body;
+
+      const existing = await User.findOne({ email: email.toLowerCase() });
+      if (existing) {
+        return res.status(400).json({ message: "User already exists" });
+      }
+
+      const hashed = await hashpassword(password);
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpExpire = Date.now() + 5 * 60 * 1000;
+
+      const newUser = new User({
+        name,
+        email: email.toLowerCase(),
+        password: hashed,
+        otp,
+        otpExpireTime: otpExpire,
+        isVerified: false
+      });
+
+      await newUser.save();
+
+      await sentOtp(newUser.email, otp);
+
+      return res.status(201).json({
+        message: "Signup successful. OTP sent to email.",
+        userId: newUser._id
+      });
+
+    } catch (err) {
+      console.error("Signup error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+  // ---------------- VERIFY OTP -----------------
+  const verifyOTP = async (req, res) => {
+    try {
+      const { userId, otp } = req.body;
+
+      if (!userId || !otp)
+        return res.status(400).json({ message: "userId and OTP required" });
+
+      const user = await User.findById(userId);
+      if (!user)
+        return res.status(404).json({ message: "User not found" });
+
+      // 👉 Restrict only Gmail users
+      if (!user.email.endsWith("@gmail.com")) {
+        return res.status(400).json({ message: "Only Gmail email IDs are allowed" });
+      }
+
+      if (user.isVerified)
+        return res.status(400).json({ message: "User already verified" });
+
+      if (Date.now() > user.otpExpireTime)
+        return res.status(400).json({ message: "OTP expired" });
+
+      if (user.otp !== otp)
+        return res.status(400).json({ message: "Invalid OTP" });
+
+      user.isVerified = true;
+      user.otp = undefined;
+      user.otpExpireTime = undefined;
+      await user.save();
+
+      return res.status(200).json({
+        message: "OTP verified successfully",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email
+        }
+      });
+    } catch (err) {
+      console.error("verifyOTP error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+
+  // ---------------- RESEND OTP -----------------
+  const resendOTP = async (req, res) => {
+    try {
+      const { userId } = req.body;
+
+      const user = await User.findById(userId);
+      if (!user)
+        return res.status(404).json({ message: "User not found" });
+
+      if (user.isVerified)
+        return res.status(400).json({ message: "User already verified" });
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otpExpire = Date.now() + 5 * 60 * 1000;
+
+      user.otp = otp;
+      user.otpExpireTime = otpExpire;
+      await user.save();
+
+      await sentOtp(user.email, otp);
+
+      return res.status(200).json({ message: "OTP resent successfully" });
+
+    } catch (err) {
+      console.error("resendOTP error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+
+  const googleLogin = async (req, res) => {
+    try {
+      const { name, email, picture } = req.body;
+
+      let user = await User.findOne({ email });
+
+      if (!user) {
+        user = await User.create({
+          name,
+          email,
+          avatar: picture,
+          password: null,
+          googleAccount: true,
+          isVerified: true
+        });
+      }
+
+      // ⭐ generate JWT token properly
+      const token = generateToken(user._id);
+
+      return res.status(200).json({
+        message: "Google login success",
+        token,
+        user
+      });
+
+    } catch (err) {
+      console.error("Google Login Error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  };
+
+
+
+  // EXPORT ALL
+  module.exports = {
+    signup,
+    verifyOTP,
+    resendOTP,
+    googleLogin,
+  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
