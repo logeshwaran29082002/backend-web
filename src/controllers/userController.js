@@ -42,10 +42,14 @@ const signup = async (req, res) => {
     }
 
     // ✅ ALWAYS SEND SUCCESS RESPONSE TO FRONTEND
-    return res.status(201).json({
-      message: "Signup successful",
-      userId: newUser._id
-    });
+  await newUser.save();   // ✅ user DB-ல store ஆகுது
+
+  
+return res.status(201).json({
+  message: "Signup successful",
+  userId: newUser._id
+});
+
 
   } catch (err) {
     console.error("Signup error:", err);
