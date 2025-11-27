@@ -9,7 +9,6 @@ const signup = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // ✅ SAFETY VALIDATION (prevents 500 crash)
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -33,28 +32,30 @@ const signup = async (req, res) => {
       isVerified: false
     });
 
-    await newUser.save();
+    await newUser.save();   // ✅ USER STORED SUCCESSFULLY
 
-    // ✅ OTP SEND SAFELY (mail fail but signup success)
+    // ✅ OTP SEND — BUT WILL NOT BREAK SIGNUP IF FAILS
     try {
       await sentOtp(newUser.email, otp);
-    } catch (mailErr) {
-      console.error("OTP sending failed:", mailErr);
+    } catch (err) {
+      console.error("OTP sending failed:", err.message);
     }
 
+    // ✅ ALWAYS SEND SUCCESS RESPONSE TO FRONTEND
     return res.status(201).json({
-      message: "Signup successful. OTP sent to email.",
+      message: "Signup successful",
       userId: newUser._id
     });
 
   } catch (err) {
     console.error("Signup error:", err);
     return res.status(500).json({
-      message: "Server error",
+      message: "Signup failed",
       error: err.message
     });
   }
 };
+
 
 
 // ---------------- VERIFY OTP -----------------
